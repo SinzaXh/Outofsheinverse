@@ -431,13 +431,26 @@ def fetch_products(category_slug: str) -> List[str]:
     def fetch_page(page_num: int) -> dict | None:
         url = (
             f"https://www.sheinindia.in/api/category/83"
-            f"?fields=SITE&currentPage={page_num}&pageSize=40&format=json"
-            f"&query=%3Arelevance%3Aundefined%3Anull&facets=undefined%3Anull"
-            f"&curated=true&curatedid={category_slug}&gridColumns=2"
-            f"&includeUnratedProducts=false&segmentIds=15%2C8%2C19"
-            f"&customertype=Existing&advfilter=true&platform=Msite"
-            f"&showAdsOnNextPage=false&is_ads_enable_plp=true"
-            f"&displayRatings=true&store=shein"
+            f"?fields=SITE"
+            f"&currentPage={page_num}"
+            f"&pageSize=40"
+            f"&format=json"
+            f"&query=%3Arelevance%3Aundefined%3Anull"
+            f"&facets=undefined%3Anull"
+            f"&curated=true"
+            f"&curatedid={category_slug}"
+            f"&gridColumns=2"
+            f"&includeUnratedProducts=false"
+            f"&segmentIds=15%2C8%2C19"
+            f"&customertype=Existing"
+            f"&advfilter=true"
+            f"&platform=Msite"
+            f"&showAdsOnNextPage=false"
+            f"&is_ads_enable_plp=true"
+            f"&displayRatings=true"
+            f"&segmentIds="
+            f"&"
+            f"&store=shein"
         )
         try:
             r = requests.get(url, headers=headers, timeout=15)
