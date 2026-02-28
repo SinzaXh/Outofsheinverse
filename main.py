@@ -7,28 +7,23 @@ from typing import List
 # ================= LIBRARY IMPORTS =================
 import requests
 import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # ================= TELEGRAM CONFIG =================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-CHAT_ID = os.environ.get("CHAT_ID", "")
-
-# ================= EARNKARO CONFIG =================
-EARNKARO_API_TOKEN = os.environ.get("EARNKARO_API_TOKEN", "")
-EARNKARO_API_URL = os.environ.get("EARNKARO_API_URL", "https://api.earnkaro.com/v1/convert")
+BOT_TOKEN = "7201368733:AAG3Yp-E5g-DExLHEN-ETrv74zeqwuTIhNM"
+CHAT_ID   = "7194175926"
 
 # ================= SYSTEM CONFIG =================
-COOKIES_FILE = os.environ.get("COOKIES_FILE", "cookies.json")
-CART_TRACKER_FILE = "cart.json"
-DEFAULT_USER_EMAIL = os.environ.get("USER_EMAIL", "yoursheinemail")
+COOKIES_FILE       = "cookies.json"
+CART_TRACKER_FILE  = "cart.json"
+DEFAULT_USER_EMAIL = "victortakla01@gmail.com"
 
-# ─── Detect Railway / CI / headless environment ───────────────────────────────
-IS_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
+# ─── Detect Railway / headless environment ────────────────────────────────────
+IS_RAILWAY  = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
 IS_HEADLESS = IS_RAILWAY or bool(os.environ.get("HEADLESS", ""))
 
-# API Endpoints
+# ================= API Endpoints =================
 URL_MICROCART     = "https://www.sheinindia.in/api/cart/microcart"
 URL_CREATE        = "https://www.sheinindia.in/api/cart/create"
 URL_DELETE        = "https://www.sheinindia.in/api/cart/delete"
@@ -37,9 +32,9 @@ URL_APPLY_VOUCHER = "https://www.sheinindia.in/api/cart/apply-voucher"
 URL_LOGIN_PAGE    = "https://www.sheinindia.in/login"
 
 # ================= SETTINGS =================
-BATCH_SIZE       = int(os.environ.get("BATCH_SIZE", 5))
-VOUCHER_CODE     = os.environ.get("VOUCHER_CODE", "")
-COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_SECONDS", 5))
+BATCH_SIZE       = 5
+VOUCHER_CODE     = "SVC78FBBPUN80MG"
+COOLDOWN_SECONDS = 5
 
 # ================= MEN CATEGORIES =================
 MEN_CATEGORIES = [
@@ -82,9 +77,6 @@ def clear_tracker_file():
 # TELEGRAM
 # ─────────────────────────────────────────────────────────────────────────────
 def send_order_update(message: str, disable_preview: bool = True):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ Telegram not configured – skipping notification.")
-        return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -93,7 +85,9 @@ def send_order_update(message: str, disable_preview: bool = True):
         "disable_web_page_preview": disable_preview,
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json=payload, timeout=10)
+        if r.status_code != 200:
+            print(f"⚠️ Telegram Error: {r.text}")
     except Exception as e:
         print(f"⚠️ Telegram Error: {e}")
 
@@ -101,43 +95,65 @@ def send_order_update(message: str, disable_preview: bool = True):
 # BROWSER CORE  ←  PERMANENT CHROMEDRIVER FIX FOR RAILWAY
 # ─────────────────────────────────────────────────────────────────────────────
 def _build_options() -> uc.ChromeOptions:
-    """
-    Build ChromeOptions that work on both local machines AND Railway/Docker.
-    All critical headless / sandbox flags are set here once and only here.
-    """
     options = uc.ChromeOptions()
 
-    # ── Headless (required on Railway – no display server) ──────────────────
     if IS_HEADLESS:
-        options.add_argument("--headless=new")   # new headless avoids detection
+        options.add_argument("--headless=new")
         options.add_argument("--window-size=1920,1080")
 
-    # ── Sandbox / security flags (required inside Docker / Railway) ──────────
+    # Required inside Docker / Railway
     options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")   # avoids /dev/shm OOM crash
+    options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-software-rasterizer")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-setuid-sandbox")
-
-    # ── Stability ────────────────────────────────────────────────────────────
-    options.add_argument("--single-process")          # needed on some Railway tiers
+    options.add_argument("--single-process")
     options.add_argument("--no-zygote")
     options.add_argument("--ignore-certificate-errors")
-
-    # ── Misc ─────────────────────────────────────────────────────────────────
     options.add_argument("--no-first-run")
     options.add_argument("--password-store=basic")
     options.add_argument("--lang=en-US")
 
-    # ── User-data-dir: use /tmp on Railway (writable), local path otherwise ─
-    if IS_RAILWAY:
-        profile_path = "/tmp/uc_profile"
-    else:
-        profile_path = os.path.join(os.getcwd(), "uc_profile_permanent")
+    # Profile path: /tmp on Railway, local folder otherwise
+    profile_path = "/tmp/uc_profile" if IS_RAILWAY else os.path.join(os.getcwd(), "uc_profile_permanent")
     options.add_argument(f"--user-data-dir={profile_path}")
 
     return options
+
+
+def _get_chrome_major_version() -> int | None:
+    """
+    Reads the actual installed Chrome major version from the binary.
+    This ensures UC downloads the MATCHING chromedriver — no more version mismatch.
+    """
+    import subprocess
+    import re
+
+    candidates = [
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+    ]
+    for binary in candidates:
+        try:
+            out = subprocess.check_output(
+                [binary, "--version"],
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            ).decode()
+            match = re.search(r"(\d+)\.\d+\.\d+", out)
+            if match:
+                version = int(match.group(1))
+                print(f"🔍 Detected Chrome version: {version} (via {binary})")
+                return version
+        except Exception:
+            continue
+    print("⚠️ Could not detect Chrome version — letting UC guess.")
+    return None
 
 
 def init_browser():
@@ -148,13 +164,14 @@ def init_browser():
     print(f"\n🚀 Launching Browser (headless={IS_HEADLESS}, railway={IS_RAILWAY})…")
     options = _build_options()
 
-    # ── undetected_chromedriver: let it auto-match Chrome version ────────────
-    # version_main=None  →  UC queries the installed Chrome binary automatically.
-    # This eliminates the "chromedriver version mismatch" crash permanently.
+    # Detect the ACTUAL installed Chrome major version so UC downloads
+    # the correct matching chromedriver — permanently fixes version mismatch.
+    chrome_version = _get_chrome_major_version()
+
     driver = uc.Chrome(
         options=options,
-        version_main=None,      # auto-detect ← KEY FIX
-        use_subprocess=True,    # avoids atexit / signal conflicts on Linux
+        version_main=chrome_version,  # exact match — no more "supports Chrome 146 / got 145"
+        use_subprocess=True,          # avoids signal conflicts on Linux
     )
     driver.set_page_load_timeout(60)
     driver.get("https://www.sheinindia.in/")
@@ -178,19 +195,16 @@ def save_cookies():
 def load_cookies_if_exist():
     if not os.path.exists(COOKIES_FILE):
         if IS_HEADLESS:
-            # On Railway there is no keyboard – crash early with a helpful message.
             raise RuntimeError(
-                "\n❌ No cookies.json found and we're running headless on Railway.\n"
-                "   Run the bot ONCE locally (python main.py), log in when prompted,\n"
-                "   then upload the generated cookies.json to your Railway volume or\n"
-                "   set its content as the COOKIES_JSON environment variable."
+                "\n❌ No cookies.json found and running headless on Railway.\n"
+                "   Run locally first: python main.py → log in → cookies.json is generated.\n"
+                "   Then commit cookies.json or upload it to your Railway volume."
             )
         print("🔓 Opening Login Page…")
         driver.get(URL_LOGIN_PAGE)
-        input("🔴 Please log in manually, then press ENTER here… ")
+        input("🔴 Log in manually, then press ENTER… ")
         save_cookies()
     else:
-        # Inject saved cookies
         print(f"✅ Found {COOKIES_FILE}. Injecting cookies…")
         try:
             with open(COOKIES_FILE, "r") as f:
@@ -198,7 +212,6 @@ def load_cookies_if_exist():
             driver.get("https://www.sheinindia.in/")
             time.sleep(2)
             for cookie in cookies:
-                # Some keys cause errors when re-injecting
                 cookie.pop("sameSite", None)
                 try:
                     driver.add_cookie(cookie)
@@ -229,9 +242,9 @@ def browser_api_call(method: str, url: str, json_data: dict = None):
 
     js_script = """
     var callback = arguments[arguments.length - 1];
-    var url  = arguments[0];
+    var url    = arguments[0];
     var method = arguments[1];
-    var data = arguments[2];
+    var data   = arguments[2];
 
     var options = {
         method: method,
@@ -248,13 +261,13 @@ def browser_api_call(method: str, url: str, json_data: dict = None):
     });
 
     Promise.race([fetch(url, options), timeout])
-        .then(function(response) {
-            return response.json().then(function(body) {
-                return { status: response.status, body: body };
+        .then(function(r) {
+            return r.json().then(function(body) {
+                return { status: r.status, body: body };
             });
         })
         .then(function(result) { callback(result); })
-        .catch(function(error) { callback({ status: 500, error: error.toString() }); });
+        .catch(function(err)   { callback({ status: 500, error: err.toString() }); });
     """
     try:
         return driver.execute_async_script(js_script, url, method, json_data)
@@ -269,9 +282,7 @@ def ensure_login():
     if not res or res.get("status") == 401 or "login" in driver.current_url:
         print("\n⚠️ Session invalid.")
         if IS_HEADLESS:
-            raise RuntimeError(
-                "❌ Session invalid and running headless. Regenerate cookies.json locally."
-            )
+            raise RuntimeError("❌ Session invalid on Railway. Regenerate cookies.json locally.")
         input("🔴 Log in manually then press ENTER… ")
         save_cookies()
 
@@ -290,7 +301,7 @@ def get_or_create_cart() -> str:
 
 def clear_cart_bridge():
     tracked_items = load_tracker()
-    count_needed = len(tracked_items)
+    count_needed  = len(tracked_items)
 
     if count_needed == 0:
         res = browser_api_call("GET", URL_MICROCART)
@@ -301,16 +312,15 @@ def clear_cart_bridge():
             return
 
     print(f"🧹 Clearing {count_needed} items…")
-
     for _ in range(count_needed):
         del_res = browser_api_call("POST", URL_DELETE, {"entryNumber": 0})
-        status = del_res.get("status", 500)
+        status  = del_res.get("status", 500)
 
         if status in [403, 429, 500, 502, 503]:
             print(f"⛔ Error {status} during delete. Refreshing…")
             refresh_browser_and_update_sensor()
             del_res = browser_api_call("POST", URL_DELETE, {"entryNumber": 0})
-            status = del_res.get("status", 500)
+            status  = del_res.get("status", 500)
 
         if status == 200:
             print("   ✅ Deleted 1 item.")
@@ -326,15 +336,15 @@ def clear_cart_bridge():
 
 def add_product_bridge(cart_id: str, pid: str) -> bool:
     print(f"➕ Adding {pid}…")
-    url = URL_ADD_FMT.format(cart_id=cart_id, product_id=pid)
-    res = browser_api_call("POST", url, {"quantity": 1})
+    url    = URL_ADD_FMT.format(cart_id=cart_id, product_id=pid)
+    res    = browser_api_call("POST", url, {"quantity": 1})
     status = res.get("status", 500)
 
     if status in [403, 429, 500, 502, 503]:
         print(f"🚨 Error {status}! Refreshing sensor…")
         refresh_browser_and_update_sensor()
         print(f"🔄 Retrying add {pid}…")
-        res = browser_api_call("POST", url, {"quantity": 1})
+        res    = browser_api_call("POST", url, {"quantity": 1})
         status = res.get("status", 500)
 
     if status != 200:
@@ -351,7 +361,7 @@ def apply_voucher_bridge() -> bool:
         "voucherId": VOUCHER_CODE,
         "device": {"client_type": "MSITE"},
     }
-    res = browser_api_call("POST", URL_APPLY_VOUCHER, payload)
+    res    = browser_api_call("POST", URL_APPLY_VOUCHER, payload)
     status = res.get("status", 500)
 
     if status == 200:
@@ -379,26 +389,6 @@ def fetch_products(curated_id: str) -> List[str]:
         print(f"⚠️ Fetch error: {e}")
     return product_ids
 
-
-def convert_to_affiliate_link(original_url: str) -> str:
-    if not EARNKARO_API_TOKEN:
-        return original_url
-    headers = {
-        "Authorization": f"Bearer {EARNKARO_API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    payload = {"deal": original_url, "convert_option": "convert_only"}
-    try:
-        response = requests.post(EARNKARO_API_URL, headers=headers, json=payload, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            if "data" in data and len(data["data"]) > 0:
-                return data["data"][0].get("affiliate_link", original_url)
-        print(f"⚠️ EarnKaro Error: {response.text}")
-    except Exception as e:
-        print(f"⚠️ Convert Error: {e}")
-    return original_url
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN RUN LOOP
 # ─────────────────────────────────────────────────────────────────────────────
@@ -407,7 +397,7 @@ def run():
     init_browser()
     ensure_login()
 
-    print(f"📲 System Ready | Batch: {BATCH_SIZE} | Timer: {COOLDOWN_SECONDS}s")
+    print(f"📲 System Ready | Batch: {BATCH_SIZE} | Timer: {COOLDOWN_SECONDS}s | Voucher: {VOUCHER_CODE}")
     clear_cart_bridge()
 
     while True:
@@ -446,14 +436,15 @@ def run():
                             time.sleep(0.5)
 
                             if apply_voucher_bridge():
-                                original_link  = f"https://www.sheinindia.in/p/{verify_pid}"
-                                affiliate_link = convert_to_affiliate_link(original_link)
+                                product_link = f"https://www.sheinindia.in/p/{verify_pid}"
+
                                 send_order_update(
                                     f"🚨 <b>VOUCHER WORKED!</b>\n"
-                                    f"Cat: {category}\n"
-                                    f"🔗 <a href='{affiliate_link}'>Buy Now</a>"
+                                    f"📂 Category: {category}\n"
+                                    f"🆔 Product ID: <code>{verify_pid}</code>\n"
+                                    f"🔗 <a href='{product_link}'>Open Product</a>"
                                 )
-                                print(f"✅ Success: {verify_pid}")
+                                print(f"✅ Success: {verify_pid} → {product_link}")
                             else:
                                 print(f"⏩ {verify_pid} individual fail.")
 
