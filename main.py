@@ -413,71 +413,69 @@ def apply_voucher_bridge() -> bool:
 
 def fetch_products(category_slug: str) -> List[str]:
     """
-    Accepts slug like "jeans-189444" from the URL https://www.sheinindia.in/s/jeans-189444
-    Extracts the numeric ID from the end and fetches all pages.
+    Uses the correct SHEIN API with full slug e.g. "jeans-189444"
+    Paginates through all pages using pagination.totalPages from response.
     """
-    numeric_id = category_slug.split("-")[-1]
-    print(f"🔍 Fetching category: {category_slug} (id={numeric_id})…")
-
+    print(f"\n🔍 Fetching category: {category_slug}…")
     product_ids = []
-    page = 0
 
     headers = {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         "x-tenant-id": "SHEIN",
-        "accept": "application/json",
+        "accept": "application/json, text/plain, */*",
         "referer": f"https://www.sheinindia.in/s/{category_slug}",
+        "origin": "https://www.sheinindia.in",
     }
 
-    while True:
+    # Fetch page 0 first to get total pages
+    def fetch_page(page_num: int) -> dict | None:
         url = (
-            "https://search-edge.services.sheinindia.in/rilfnlwebservices/v4/rilfnl/products/category/83"
-            f"?advfilter=true&curatedid={numeric_id}&curated=true"
-            f"&pageSize=40&store=shein&fields=FULL&currentPage={page}"
+            f"https://www.sheinindia.in/api/category/83"
+            f"?fields=SITE&currentPage={page_num}&pageSize=40&format=json"
+            f"&query=%3Arelevance%3Aundefined%3Anull&facets=undefined%3Anull"
+            f"&curated=true&curatedid={category_slug}&gridColumns=2"
+            f"&includeUnratedProducts=false&segmentIds=15%2C8%2C19"
+            f"&customertype=Existing&advfilter=true&platform=Msite"
+            f"&showAdsOnNextPage=false&is_ads_enable_plp=true"
+            f"&displayRatings=true&store=shein"
         )
         try:
             r = requests.get(url, headers=headers, timeout=15)
-            print(f"   📡 Page {page} — HTTP {r.status_code} | size: {len(r.content)} bytes")
-
-            # Guard: empty body crashes .json() — handle gracefully
+            print(f"   📡 Page {page_num} — HTTP {r.status_code} | {len(r.content)} bytes")
             if not r.content or not r.text.strip():
-                print(f"   ⚠️ Empty response on page {page}. Stopping pagination.")
-                break
-
-            # Guard: non-JSON response (HTML error page etc.)
-            try:
-                data = r.json()
-            except Exception:
-                print(f"   ⚠️ Non-JSON response on page {page}: {r.text[:200]}")
-                break
-
-            products = data.get("products", [])
-
-            if not products:
-                if page == 0:
-                    print(f"   ⚠️ No products on page 0! Response keys: {list(data.keys())}")
-                    print(f"   Raw (first 300 chars): {str(data)[:300]}")
-                break
-
-            for p in products:
-                if p.get("code"):
-                    product_ids.append(str(p["code"]))
-
-            total = data.get("pagination", {}).get("totalNumberOfResults", 0)
-            print(f"   📦 Page {page}: got {len(products)} products (total reported: {total})")
-
-            # Stop if we have all products or this page had fewer than 40
-            if len(products) < 40 or len(product_ids) >= total:
-                all_pages_done = True
-            else:
-                page += 1
-
+                print(f"   ⚠️ Empty response on page {page_num}")
+                return None
+            return r.json()
         except Exception as e:
-            print(f"⚠️ Fetch error page {page}: {e}")
+            print(f"   ⚠️ Error on page {page_num}: {e}")
+            return None
+
+    # Page 0 — also gets total pages
+    data = fetch_page(0)
+    if not data:
+        return product_ids
+
+    total_pages = data.get("pagination", {}).get("totalPages", 1)
+    total_results = data.get("pagination", {}).get("totalResults", 0)
+    print(f"   📊 Total products: {total_results} across {total_pages} pages")
+
+    for p in data.get("products", []):
+        if p.get("code"):
+            product_ids.append(str(p["code"]))
+
+    # Remaining pages
+    for page in range(1, total_pages):
+        data = fetch_page(page)
+        if not data:
             break
+        for p in data.get("products", []):
+            if p.get("code"):
+                product_ids.append(str(p["code"]))
+        time.sleep(0.3)  # gentle rate limit
 
     print(f"   ✅ Total fetched: {len(product_ids)} products")
     return product_ids
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN RUN LOOP
