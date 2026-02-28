@@ -192,36 +192,66 @@ def save_cookies():
         pass
 
 
+def _load_raw_cookies() -> list:
+    """
+    Load cookies from COOKIES_JSON env var first (Railway-friendly),
+    then fall back to cookies.json file on disk.
+    """
+    # Priority 1: Environment variable — paste JSON directly in Railway Variables
+    raw_env = os.environ.get("COOKIES_JSON", "").strip()
+    if raw_env:
+        print("✅ Loading cookies from COOKIES_JSON env variable…")
+        try:
+            return json.loads(raw_env)
+        except Exception as e:
+            print(f"⚠️ Failed to parse COOKIES_JSON env var: {e}")
+
+    # Priority 2: cookies.json file on disk
+    if os.path.exists(COOKIES_FILE):
+        print(f"✅ Found {COOKIES_FILE} on disk. Loading…")
+        try:
+            with open(COOKIES_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️ Failed to read {COOKIES_FILE}: {e}")
+
+    return []
+
+
 def load_cookies_if_exist():
-    if not os.path.exists(COOKIES_FILE):
+    cookies = _load_raw_cookies()
+
+    if not cookies:
         if IS_HEADLESS:
             raise RuntimeError(
-                "\n❌ No cookies.json found and running headless on Railway.\n"
-                "   Run locally first: python main.py → log in → cookies.json is generated.\n"
-                "   Then commit cookies.json or upload it to your Railway volume."
+                "\n❌ No cookies found on Railway!\n"
+                "   Fix in 30 seconds:\n"
+                "   1. Railway dashboard → your service → Variables tab\n"
+                "   2. Add:  COOKIES_JSON  =  <paste entire cookies.json content>\n"
+                "   3. Redeploy."
             )
         print("🔓 Opening Login Page…")
         driver.get(URL_LOGIN_PAGE)
         input("🔴 Log in manually, then press ENTER… ")
         save_cookies()
-    else:
-        print(f"✅ Found {COOKIES_FILE}. Injecting cookies…")
-        try:
-            with open(COOKIES_FILE, "r") as f:
-                cookies = json.load(f)
-            driver.get("https://www.sheinindia.in/")
-            time.sleep(2)
-            for cookie in cookies:
-                cookie.pop("sameSite", None)
-                try:
-                    driver.add_cookie(cookie)
-                except Exception:
-                    pass
-            driver.refresh()
-            time.sleep(3)
-            print("✅ Cookies injected.")
-        except Exception as e:
-            print(f"⚠️ Cookie injection error: {e}")
+        return
+
+    # Inject cookies into browser
+    print(f"🍪 Injecting {len(cookies)} cookies…")
+    try:
+        driver.get("https://www.sheinindia.in/")
+        time.sleep(2)
+        for cookie in cookies:
+            cookie.pop("sameSite", None)
+            try:
+                driver.add_cookie(cookie)
+            except Exception:
+                pass
+        driver.refresh()
+        time.sleep(3)
+        print("✅ Cookies injected successfully.")
+    except Exception as e:
+        print(f"⚠️ Cookie injection error: {e}")
 
 
 def refresh_browser_and_update_sensor():
