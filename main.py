@@ -38,25 +38,7 @@ COOLDOWN_SECONDS = 5
 
 # ================= MEN CATEGORIES =================
 MEN_CATEGORIES = [
-    "sweatshirts--hoodies-173109",
-    "trousers--pants-173110",
-    "jeans-173111",
-    "co-ords-173112",
-    "t-shirts-173113",
-    "shirts-173114",
-    "trackpants-173115",
-    "cargo-173271",
-    "long-sleeve-styles-176989",
-    "comfy-hoodie-179355",
-    "typographic-t-shirts-176987",
-    "straight-jeans-178148",
-    "vacay-edit-179708",
-    "jacketscoats-178156",
-    "formal-pants-176999",
-    "graphic-tees-173318",
-    "graphic-sweatshirts-177000",
-    "typographic-sweatshirts-173295",
-    "jewellery-189440",
+    "jeans-189444",  # https://www.sheinindia.in/s/jeans-189444
 ]
 
 # Global Driver
@@ -431,26 +413,23 @@ def apply_voucher_bridge() -> bool:
 
 def fetch_products(category_slug: str) -> List[str]:
     """
-    category_slug can be either:
-      - "jewellery-189440"  (slug-ID format from MEN_CATEGORIES)
-      - "189440"            (bare ID)
-    The API needs only the numeric ID extracted from the end.
+    Accepts slug like "jeans-189444" from the URL https://www.sheinindia.in/s/jeans-189444
+    Extracts the numeric ID from the end and fetches all pages.
     """
-    # Extract numeric ID from slug e.g. "jewellery-189440" → "189440"
     numeric_id = category_slug.split("-")[-1]
-    print(f"🔍 Fetching category {category_slug} (id={numeric_id})…")
+    print(f"🔍 Fetching category: {category_slug} (id={numeric_id})…")
 
     product_ids = []
-    all_pages_done = False
     page = 0
 
     headers = {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "x-tenant-id": "SHEIN",
         "accept": "application/json",
+        "referer": f"https://www.sheinindia.in/s/{category_slug}",
     }
 
-    while not all_pages_done:
+    while True:
         url = (
             "https://search-edge.services.sheinindia.in/rilfnlwebservices/v4/rilfnl/products/category/83"
             f"?advfilter=true&curatedid={numeric_id}&curated=true"
@@ -458,16 +437,26 @@ def fetch_products(category_slug: str) -> List[str]:
         )
         try:
             r = requests.get(url, headers=headers, timeout=15)
-            print(f"   📡 Page {page} status: {r.status_code}")
-            data = r.json()
+            print(f"   📡 Page {page} — HTTP {r.status_code} | size: {len(r.content)} bytes")
+
+            # Guard: empty body crashes .json() — handle gracefully
+            if not r.content or not r.text.strip():
+                print(f"   ⚠️ Empty response on page {page}. Stopping pagination.")
+                break
+
+            # Guard: non-JSON response (HTML error page etc.)
+            try:
+                data = r.json()
+            except Exception:
+                print(f"   ⚠️ Non-JSON response on page {page}: {r.text[:200]}")
+                break
+
             products = data.get("products", [])
 
             if not products:
                 if page == 0:
-                    # Debug: show full response so we know what API returns
-                    print(f"   ⚠️ No products on page 0! Keys: {list(data.keys())}")
-                    print(f"   Raw (first 500 chars): {str(data)[:500]}")
-                all_pages_done = True
+                    print(f"   ⚠️ No products on page 0! Response keys: {list(data.keys())}")
+                    print(f"   Raw (first 300 chars): {str(data)[:300]}")
                 break
 
             for p in products:
