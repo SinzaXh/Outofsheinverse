@@ -706,8 +706,17 @@ def browser_api_call(method: str, url: str, json_data: dict = None):
 
     Promise.race([fetch(url, options), timeout])
         .then(function(r) {
-            return r.json().then(function(body) {
-                return { status: r.status, body: body };
+            var status = r.status;
+            return r.text().then(function(text) {
+                // If redirected to login page, return 401
+                if (status === 200 && text.trim().startsWith('<')) {
+                    return { status: 401, error: 'HTML response — session expired or redirected to login' };
+                }
+                try {
+                    return { status: status, body: JSON.parse(text) };
+                } catch(e) {
+                    return { status: status, error: 'Non-JSON: ' + text.substring(0, 100) };
+                }
             });
         })
         .then(function(result) { callback(result); })
@@ -722,11 +731,24 @@ def browser_api_call(method: str, url: str, json_data: dict = None):
 
 def ensure_login():
     load_cookies_if_exist()
+    # Make sure browser is on the site before checking session
+    if "sheinindia.in" not in driver.current_url:
+        print("🌐 Navigating to sheinindia.in before session check…")
+        driver.get("https://www.sheinindia.in/")
+        time.sleep(3)
     res = browser_api_call("GET", URL_MICROCART)
-    if not res or res.get("status") == 401 or "login" in driver.current_url:
-        print("\n⚠️ Session invalid.")
+    print(f"   🔐 Session check: status={res.get('status')} error={res.get('error', '')[:80]}")
+    if not res or res.get("status") in [401, 403] or "login" in driver.current_url:
+        print("\n❌ Session invalid — cookies are expired!")
         if IS_HEADLESS:
-            raise RuntimeError("❌ Session invalid on Railway. Regenerate cookies.json locally.")
+            raise RuntimeError(
+                "❌ Your cookies have EXPIRED.\n"
+                "   1. Log in to sheinindia.in in your browser\n"
+                "   2. Export fresh cookies using EditThisCookie extension\n"
+                "   3. Run convert_cookies.py on the new export\n"
+                "   4. Update COOKIES_JSON in Railway Variables\n"
+                "   5. Redeploy."
+            )
         input("🔴 Log in manually then press ENTER… ")
         save_cookies()
 
@@ -734,6 +756,11 @@ def ensure_login():
 # CART LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
 def get_or_create_cart() -> str:
+    # Ensure browser is on sheinindia.in — cart API fails if browser drifted
+    if "sheinindia.in" not in driver.current_url:
+        print("🌐 Re-navigating to sheinindia.in…")
+        driver.get("https://www.sheinindia.in/")
+        time.sleep(3)
     res = browser_api_call("GET", URL_MICROCART)
     print(f"   🛒 Microcart status: {res.get('status')} | body keys: {list(res.get('body', {}).keys()) if res.get('body') else 'none'}")
     if res and res.get("body") and res["body"].get("code"):
