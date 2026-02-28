@@ -9,7 +9,7 @@ import requests
 import undetected_chromedriver as uc
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
+import scraper
 from scraper import get_scraper, refresh_stock_cookies
 
 # ================= TELEGRAM CONFIG =================
