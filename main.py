@@ -36,14 +36,14 @@ COOLDOWN_SECONDS = 5
 
 # ================= MEN CATEGORIES =================
 MEN_CATEGORIES = [
-    "sweatshirts--hoodies-173109", "trousers--pants-173110", "jeans-173111", 
-    "co-ords-173112", "t-shirts-173113", "shirts-173114", 
-    "trackpants-173115", "cargo-173271", "long-sleeve-styles-176989", 
-    "comfy-hoodie-179355", "typographic-t-shirts-176987", 
-    "straight-jeans-178148", 
-    "vacay-edit-179708", 
-    "jacketscoats-178156", "formal-pants-176999", "graphic-tees-173318",
-    "graphic-sweatshirts-177000", "typographic-sweatshirts-173295", 
+    # "sweatshirts--hoodies-173109", "trousers--pants-173110", "jeans-173111", 
+    #"co-ords-173112", "t-shirts-173113", "shirts-173114", 
+    #"trackpants-173115", "cargo-173271", "long-sleeve-styles-176989", 
+    #"comfy-hoodie-179355", "typographic-t-shirts-176987", 
+    #"straight-jeans-178148", 
+    #"vacay-edit-179708", 
+    #"jacketscoats-178156", "formal-pants-176999", "graphic-tees-173318",
+    #"graphic-sweatshirts-177000", "typographic-sweatshirts-173295", 
     "jewellery-189440"
 ]
 
@@ -105,7 +105,7 @@ def init_browser():
     options.add_argument("--disable-gpu")
     options.add_argument("--headless=new")
     
-    driver = uc.Chrome(options=options, version_main=136)
+    driver = uc.Chrome(options=options, version_main=145)
     driver.get("https://www.sheinindia.in/")
     time.sleep(5) 
 
