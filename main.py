@@ -10,6 +10,8 @@ import undetected_chromedriver as uc
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+from scraper import get_scraper, refresh_stock_cookies
+
 # ================= TELEGRAM CONFIG =================
 BOT_TOKEN = "7201368733:AAG3Yp-E5g-DExLHEN-ETrv74zeqwuTIhNM"
 CHAT_ID   = "7194175926"
@@ -250,6 +252,17 @@ def load_cookies_if_exist():
         driver.refresh()
         time.sleep(3)
         print("✅ Cookies injected successfully.")
+
+        # Pass cookies to scraper so it can bypass 403 on product fetching
+        try:
+            cookie_str = "; ".join(
+                f"{c['name']}={c['value']}" for c in cookies
+                if c.get("name") and c.get("value")
+            )
+            refresh_stock_cookies(cookie_str)
+            print(f"🍪 Scraper cookies updated ({len(cookies)} cookies)")
+        except Exception as e:
+            print(f"⚠️ Scraper cookie update error: {e}")
     except Exception as e:
         print(f"⚠️ Cookie injection error: {e}")
 
@@ -413,45 +426,40 @@ def apply_voucher_bridge() -> bool:
 
 def fetch_products(category_slug: str) -> List[str]:
     """
-    Uses browser_api_call (authenticated via injected cookies) to fetch products.
-    This avoids 403 errors that occur when calling the API directly without session.
+    Uses scraper.py (httpx + HTTP/2 + cookie fallback) — no browser needed.
+    Passes cookies so it never hits 403.
     """
     print(f"\n🔍 Fetching category: {category_slug}…")
-    product_ids = []
 
-    def build_url(page_num: int) -> str:
-        return (
-            f"https://www.sheinindia.in/api/category/83"
-            f"?fields=SITE"
-            f"&currentPage={page_num}"
-            f"&pageSize=40"
-            f"&format=json"
-            f"&query=%3Arelevance%3Aundefined%3Anull"
-            f"&facets=undefined%3Anull"
-            f"&curated=true"
-            f"&curatedid={category_slug}"
-            f"&gridColumns=2"
-            f"&includeUnratedProducts=false"
-            f"&segmentIds=15%2C8%2C19"
-            f"&customertype=Existing"
-            f"&advfilter=true"
-            f"&platform=Msite"
-            f"&showAdsOnNextPage=false"
-            f"&is_ads_enable_plp=true"
-            f"&displayRatings=true"
-            f"&segmentIds="
-            f"&"
-            f"&store=shein"
-        )
+    # Build the full API URL (exactly what the site uses)
+    api_url = (
+        f"https://www.sheinindia.in/api/category/83"
+        f"?fields=SITE"
+        f"&currentPage=0"
+        f"&pageSize=40"
+        f"&format=json"
+        f"&query=%3Arelevance%3Aundefined%3Anull"
+        f"&facets=undefined%3Anull"
+        f"&curated=true"
+        f"&curatedid={category_slug}"
+        f"&gridColumns=2"
+        f"&includeUnratedProducts=false"
+        f"&segmentIds=15%2C8%2C19"
+        f"&customertype=Existing"
+        f"&advfilter=true"
+        f"&platform=Msite"
+        f"&showAdsOnNextPage=false"
+        f"&is_ads_enable_plp=true"
+        f"&displayRatings=true"
+        f"&segmentIds="
+        f"&&store=shein"
+    )
 
-    # Page 0 first — to get totalPages
-    res = browser_api_call("GET", build_url(0))
-    status = res.get("status", 500)
-    print(f"   📡 Page 0 — status: {status}")
+    products = get_scraper().fetch_all_products(api_url)
+    product_ids = [p["code"] for p in products if p.get("code")]
+    print(f"   ✅ Total fetched: {len(product_ids)} products")
+    return product_ids
 
-    if status != 200 or not res.get("body"):
-        print(f"   ❌ Failed to fetch page 0. Response: {str(res)[:200]}")
-        return product_ids
 
     data = res["body"]
     total_pages = data.get("pagination", {}).get("totalPages", 1)
