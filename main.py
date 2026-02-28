@@ -413,23 +413,14 @@ def apply_voucher_bridge() -> bool:
 
 def fetch_products(category_slug: str) -> List[str]:
     """
-    Uses the correct SHEIN API with full slug e.g. "jeans-189444"
-    Paginates through all pages using pagination.totalPages from response.
+    Uses browser_api_call (authenticated via injected cookies) to fetch products.
+    This avoids 403 errors that occur when calling the API directly without session.
     """
     print(f"\n🔍 Fetching category: {category_slug}…")
     product_ids = []
 
-    headers = {
-        "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "x-tenant-id": "SHEIN",
-        "accept": "application/json, text/plain, */*",
-        "referer": f"https://www.sheinindia.in/s/{category_slug}",
-        "origin": "https://www.sheinindia.in",
-    }
-
-    # Fetch page 0 first to get total pages
-    def fetch_page(page_num: int) -> dict | None:
-        url = (
+    def build_url(page_num: int) -> str:
+        return (
             f"https://www.sheinindia.in/api/category/83"
             f"?fields=SITE"
             f"&currentPage={page_num}"
@@ -452,25 +443,20 @@ def fetch_products(category_slug: str) -> List[str]:
             f"&"
             f"&store=shein"
         )
-        try:
-            r = requests.get(url, headers=headers, timeout=15)
-            print(f"   📡 Page {page_num} — HTTP {r.status_code} | {len(r.content)} bytes")
-            if not r.content or not r.text.strip():
-                print(f"   ⚠️ Empty response on page {page_num}")
-                return None
-            return r.json()
-        except Exception as e:
-            print(f"   ⚠️ Error on page {page_num}: {e}")
-            return None
 
-    # Page 0 — also gets total pages
-    data = fetch_page(0)
-    if not data:
+    # Page 0 first — to get totalPages
+    res = browser_api_call("GET", build_url(0))
+    status = res.get("status", 500)
+    print(f"   📡 Page 0 — status: {status}")
+
+    if status != 200 or not res.get("body"):
+        print(f"   ❌ Failed to fetch page 0. Response: {str(res)[:200]}")
         return product_ids
 
+    data = res["body"]
     total_pages = data.get("pagination", {}).get("totalPages", 1)
     total_results = data.get("pagination", {}).get("totalResults", 0)
-    print(f"   📊 Total products: {total_results} across {total_pages} pages")
+    print(f"   📊 Total: {total_results} products across {total_pages} pages")
 
     for p in data.get("products", []):
         if p.get("code"):
@@ -478,13 +464,16 @@ def fetch_products(category_slug: str) -> List[str]:
 
     # Remaining pages
     for page in range(1, total_pages):
-        data = fetch_page(page)
-        if not data:
+        res = browser_api_call("GET", build_url(page))
+        status = res.get("status", 500)
+        print(f"   📡 Page {page} — status: {status}")
+        if status != 200 or not res.get("body"):
+            print(f"   ⚠️ Stopping at page {page} — bad response")
             break
-        for p in data.get("products", []):
+        for p in res["body"].get("products", []):
             if p.get("code"):
                 product_ids.append(str(p["code"]))
-        time.sleep(0.3)  # gentle rate limit
+        time.sleep(0.3)
 
     print(f"   ✅ Total fetched: {len(product_ids)} products")
     return product_ids
