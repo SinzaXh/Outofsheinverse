@@ -1,0 +1,7 @@
+.env
+cookies.json
+cart.json
+uc_profile_permanent/
+__pycache__/
+*.pyc
+.DS_Store
