@@ -862,30 +862,6 @@ def fetch_products(category_slug: str) -> List[str]:
     return product_ids
 
 
-    data = res["body"]
-    total_pages = data.get("pagination", {}).get("totalPages", 1)
-    total_results = data.get("pagination", {}).get("totalResults", 0)
-    print(f"   📊 Total: {total_results} products across {total_pages} pages")
-
-    for p in data.get("products", []):
-        if p.get("code"):
-            product_ids.append(str(p["code"]))
-
-    # Remaining pages
-    for page in range(1, total_pages):
-        res = browser_api_call("GET", build_url(page))
-        status = res.get("status", 500)
-        print(f"   📡 Page {page} — status: {status}")
-        if status != 200 or not res.get("body"):
-            print(f"   ⚠️ Stopping at page {page} — bad response")
-            break
-        for p in res["body"].get("products", []):
-            if p.get("code"):
-                product_ids.append(str(p["code"]))
-        time.sleep(0.3)
-
-    print(f"   ✅ Total fetched: {len(product_ids)} products")
-    return product_ids
 
 
 # ─────────────────────────────────────────────────────────────────────────────
