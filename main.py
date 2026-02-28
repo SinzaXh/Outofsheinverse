@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sys
 import re
 import threading
@@ -401,7 +402,6 @@ def get_scraper() -> SheinScraper:
     if _scraper_instance is None:
         _scraper_instance = SheinScraper()
     return _scraper_instance
-from __future__ import annotations
 import json
 import os
 import time
