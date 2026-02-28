@@ -38,7 +38,25 @@ COOLDOWN_SECONDS = 5
 
 # ================= MEN CATEGORIES =================
 MEN_CATEGORIES = [
-    "jewellery-189440"
+    "sweatshirts--hoodies-173109",
+    "trousers--pants-173110",
+    "jeans-173111",
+    "co-ords-173112",
+    "t-shirts-173113",
+    "shirts-173114",
+    "trackpants-173115",
+    "cargo-173271",
+    "long-sleeve-styles-176989",
+    "comfy-hoodie-179355",
+    "typographic-t-shirts-176987",
+    "straight-jeans-178148",
+    "vacay-edit-179708",
+    "jacketscoats-178156",
+    "formal-pants-176999",
+    "graphic-tees-173318",
+    "graphic-sweatshirts-177000",
+    "typographic-sweatshirts-173295",
+    "jewellery-189440",
 ]
 
 # Global Driver
@@ -321,11 +339,20 @@ def ensure_login():
 # ─────────────────────────────────────────────────────────────────────────────
 def get_or_create_cart() -> str:
     res = browser_api_call("GET", URL_MICROCART)
+    print(f"   🛒 Microcart status: {res.get('status')} | body keys: {list(res.get('body', {}).keys()) if res.get('body') else 'none'}")
     if res and res.get("body") and res["body"].get("code"):
-        return res["body"]["code"]
+        cart_id = res["body"]["code"]
+        print(f"   ✅ Got existing cart: {cart_id}")
+        return cart_id
+    print(f"   🆕 No existing cart, creating new one…")
     res = browser_api_call("POST", URL_CREATE, {"user": DEFAULT_USER_EMAIL})
+    print(f"   🛒 Create cart status: {res.get('status')} | body: {str(res.get('body', ''))[:200]}")
     if res and res.get("body"):
-        return res["body"].get("code", "")
+        cart_id = res["body"].get("code", "")
+        if cart_id:
+            print(f"   ✅ Created cart: {cart_id}")
+            return cart_id
+    print(f"   ❌ Failed to get/create cart. Full response: {str(res)[:300]}")
     return ""
 
 
@@ -402,21 +429,65 @@ def apply_voucher_bridge() -> bool:
     return False
 
 
-def fetch_products(curated_id: str) -> List[str]:
-    print(f"🔍 Fetching {curated_id}…")
+def fetch_products(category_slug: str) -> List[str]:
+    """
+    category_slug can be either:
+      - "jewellery-189440"  (slug-ID format from MEN_CATEGORIES)
+      - "189440"            (bare ID)
+    The API needs only the numeric ID extracted from the end.
+    """
+    # Extract numeric ID from slug e.g. "jewellery-189440" → "189440"
+    numeric_id = category_slug.split("-")[-1]
+    print(f"🔍 Fetching category {category_slug} (id={numeric_id})…")
+
     product_ids = []
-    headers = {"user-agent": "Mozilla/5.0", "x-tenant-id": "SHEIN"}
-    url = (
-        "https://search-edge.services.sheinindia.in/rilfnlwebservices/v4/rilfnl/products/category/83"
-        f"?advfilter=true&curatedid={curated_id}&curated=true&pageSize=40&store=shein&fields=FULL&currentPage=0"
-    )
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        for p in r.json().get("products", []):
-            if p.get("code"):
-                product_ids.append(str(p["code"]))
-    except Exception as e:
-        print(f"⚠️ Fetch error: {e}")
+    all_pages_done = False
+    page = 0
+
+    headers = {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "x-tenant-id": "SHEIN",
+        "accept": "application/json",
+    }
+
+    while not all_pages_done:
+        url = (
+            "https://search-edge.services.sheinindia.in/rilfnlwebservices/v4/rilfnl/products/category/83"
+            f"?advfilter=true&curatedid={numeric_id}&curated=true"
+            f"&pageSize=40&store=shein&fields=FULL&currentPage={page}"
+        )
+        try:
+            r = requests.get(url, headers=headers, timeout=15)
+            print(f"   📡 Page {page} status: {r.status_code}")
+            data = r.json()
+            products = data.get("products", [])
+
+            if not products:
+                if page == 0:
+                    # Debug: show full response so we know what API returns
+                    print(f"   ⚠️ No products on page 0! Keys: {list(data.keys())}")
+                    print(f"   Raw (first 500 chars): {str(data)[:500]}")
+                all_pages_done = True
+                break
+
+            for p in products:
+                if p.get("code"):
+                    product_ids.append(str(p["code"]))
+
+            total = data.get("pagination", {}).get("totalNumberOfResults", 0)
+            print(f"   📦 Page {page}: got {len(products)} products (total reported: {total})")
+
+            # Stop if we have all products or this page had fewer than 40
+            if len(products) < 40 or len(product_ids) >= total:
+                all_pages_done = True
+            else:
+                page += 1
+
+        except Exception as e:
+            print(f"⚠️ Fetch error page {page}: {e}")
+            break
+
+    print(f"   ✅ Total fetched: {len(product_ids)} products")
     return product_ids
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -435,11 +506,14 @@ def run():
             print(f"\n🚀 CAT: {category}")
             all_products = fetch_products(category)
             if not all_products:
+                print(f"⚠️ 0 products found for {category}. Waiting 30s before retry…")
+                time.sleep(30)
                 continue
 
             cart_id = get_or_create_cart()
             if not cart_id:
-                refresh_browser_and_update_sensor()
+                print("⚠️ Cart failed. Waiting 30s before retry (NOT refreshing endlessly)…")
+                time.sleep(30)
                 continue
 
             for i in range(0, len(all_products), BATCH_SIZE):
