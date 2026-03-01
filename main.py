@@ -7,19 +7,18 @@ from typing import List
 # ================= LIBRARY IMPORTS =================
 import requests
 import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
 
 # ================= TELEGRAM CONFIG =================
-BOT_TOKEN = "7201368733:AAG3Yp-E5g-DExLHEN-ETrv74zeqwuTIhNM"
+BOT_TOKEN = "7201368733:AAG3Yp-E5g-DExLHEN-ETrv74zeqwuTIhNM" 
 CHAT_ID = "7194175926"
-
-
 
 
 # ================= SYSTEM CONFIG =================
 COOKIES_FILE = "cookies.json"
 CART_TRACKER_FILE = "cart.json"
 CHROME_PROFILE_PATH = os.path.join(os.getcwd(), "uc_profile_permanent") 
-DEFAULT_USER_EMAIL = "victortakla01@gmail.com"
+DEFAULT_USER_EMAIL = "yoursheinemail"
 
 # API Endpoints
 URL_MICROCART = "https://www.sheinindia.in/api/cart/microcart"
@@ -31,7 +30,7 @@ URL_LOGIN_PAGE = "https://www.sheinindia.in/login"
 
 # ================= SETTINGS =================
 BATCH_SIZE = 5 
-VOUCHER_CODE = "  "
+VOUCHER_CODE = "SVC0H5IU51Q9T9S"
 COOLDOWN_SECONDS = 5  
 
 # ================= MEN CATEGORIES =================
@@ -67,7 +66,7 @@ def save_tracker_item(pid):
 def remove_tracker_item():
     items = load_tracker()
     if items:
-        items.pop()
+        removed = items.pop()
         with open(CART_TRACKER_FILE, 'w') as f:
             json.dump(items, f, indent=2)
 
@@ -77,7 +76,7 @@ def clear_tracker_file():
 
 # ================= TELEGRAM FUNCTION =================
 def send_order_update(message: str, disable_preview: bool = True):
-    if not BOT_TOKEN.strip(): return
+    if "YOUR_BOT_TOKEN" in BOT_TOKEN: return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -98,14 +97,9 @@ def init_browser():
     print(f"\n🚀 Launching Browser...")
     options = uc.ChromeOptions()
     options.add_argument(f"--user-data-dir={CHROME_PROFILE_PATH}")
-    options.add_argument("--no-first-run")
-    options.add_argument("--password-store=basic")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--headless=new")
+    options.add_argument("--no-first-run --password-store=basic")
     
-    driver = uc.Chrome(options=options, version_main=145)
+    driver = uc.Chrome(options=options)
     driver.get("https://www.sheinindia.in/")
     time.sleep(5) 
 
@@ -213,8 +207,7 @@ def clear_cart_bridge():
         if status in [403, 429, 500, 502, 503]:
              print(f"⛔ Error {status} during delete. Refreshing...")
              refresh_browser_and_update_sensor()
-             del_res = browser_api_call("POST", URL_DELETE, {"entryNumber": 0})
-             status = del_res.get("status", 500)
+             browser_api_call("POST", URL_DELETE, {"entryNumber": 0}) 
         
         if status == 200:
             print(f"   ✅ Deleted 1 Item.")
@@ -281,7 +274,38 @@ def fetch_products(curated_id: str) -> List[str]:
     return product_ids
 
 
+def convert_to_affiliate_link(original_url: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {EARNKARO_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
 
+    payload = {
+        "deal": original_url,
+        "convert_option": "convert_only"
+    }
+
+    try:
+        response = requests.post(
+            EARNKARO_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=15
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Adjust based on actual response structure
+            if "data" in data and len(data["data"]) > 0:
+                return data["data"][0].get("affiliate_link", original_url)
+
+        print(f"⚠️ EarnKaro Error: {response.text}")
+        return original_url
+
+    except Exception as e:
+        print(f"⚠️ Convert Error: {e}")
+        return original_url
 
 # ================= MAIN RUN LOOP =================
 # ================= MAIN RUN LOOP =================
@@ -330,11 +354,12 @@ def run():
 
                             if apply_voucher_bridge():
                                 original_link = f"https://www.sheinindia.in/p/{verify_pid}"
+                                affiliate_link = convert_to_affiliate_link(original_link)
 
                                 send_order_update(
                                     f"🚨 <b>VOUCHER WORKED!</b>\n"
                                     f"Cat: {category}\n"
-                                    f"🔗 <a href='{original_link}'>Buy Now</a>"
+                                    f"🔗 <a href='{affiliate_link}'>Buy Now</a>"
                                 )
 
                                 print(f"✅ Success: {verify_pid}")
